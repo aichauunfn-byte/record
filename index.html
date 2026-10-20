@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>隨手記帳</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root{
+  --bg:#0b0b0b; --card:#161616; --card2:#202221; --line:#2d2f2e;
+  --text:#f1f1f1; --muted:#9a9d9b; --accent:#0e4a40; --accent-line:#2f7f70;
+  --danger:#e5655b; --ok:#5cc9a7;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;font-size:16px}
+body{padding:env(safe-area-inset-top) 0 calc(24px + env(safe-area-inset-bottom))}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 0 8px}
+h1{font-size:24px;margin:0}
+.iconbtn{background:var(--card2);border:1px solid var(--line);color:var(--text);
+  border-radius:12px;padding:8px 12px;font-size:15px}
+.month{display:flex;align-items:center;justify-content:center;gap:20px;margin:4px 0 12px;font-size:18px}
+.month button{background:none;border:0;color:var(--text);font-size:26px;padding:4px 12px}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.summary div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+.summary small{display:block;color:var(--muted);font-size:12px}
+.summary b{font-size:17px}
+.exp{color:var(--danger)} .inc{color:var(--ok)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px}
+.panel h2{font-size:22px;margin:0 0 12px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#101110;border-radius:14px;padding:4px;margin-bottom:14px}
+.tabs button{background:none;border:0;color:var(--muted);font-size:17px;padding:12px 0;border-radius:11px}
+.tabs button.on{background:var(--card2);color:var(--text);font-weight:700}
+.voice{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);
+  border-radius:14px;padding:16px;font-size:18px;font-weight:600}
+.voice.listening{border-color:var(--danger);color:var(--danger)}
+.hint{color:var(--muted);font-size:14px;line-height:1.5;margin:8px 0 0}
+label{display:block;color:var(--muted);font-size:16px;margin:18px 0 8px}
+input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);
+  border-radius:14px;padding:14px;font-size:18px;font-family:inherit}
+input[type=number]{font-size:26px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--line);
+  color:var(--text);border-radius:999px;padding:10px 16px;font-size:17px}
+.chip i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.chip.on{background:var(--accent);border-color:var(--accent-line);font-weight:700;box-shadow:0 0 0 3px rgba(47,127,112,.35)}
+.chip.on::before{content:"✓"}
+.save{width:100%;margin-top:22px;background:var(--accent);border:1px solid var(--accent-line);color:#fff;
+  border-radius:16px;padding:16px;font-size:19px;font-weight:700}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.list{margin-top:20px}
+.list h3{font-size:16px;color:var(--muted);margin:0 0 8px;font-weight:600}
+.item{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+.item .l{min-width:0}
+.item .t{font-weight:600}
+.item .s{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .r{text-align:right;white-space:nowrap}
+.item .r small{display:block;font-size:12px;color:var(--muted)}
+.item button{background:none;border:0;color:var(--muted);font-size:20px;padding:4px 8px}
+.dot{color:var(--muted)} .dot.pending{color:#e0b341}.dot.done{color:var(--ok)}
+dialog{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:20px;
+  width:min(94vw,520px);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog h2{margin:0 0 4px;font-size:20px}
+dialog input,dialog textarea{font-size:16px}
+dialog .btns{display:flex;gap:10px;margin-top:16px}
+dialog .btns button{flex:1;padding:13px;border-radius:12px;border:1px solid var(--line);
+  background:var(--card2);color:var(--text);font-size:16px}
+dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:#2a2c2b;border:1px solid var(--line);padding:12px 18px;border-radius:999px;font-size:15px;
+  opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
+.toast.show{opacity:1}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>隨手記帳</h1>
+    <div style="display:flex;gap:8px">
+      <button class="iconbtn" id="syncBtn">☁ 同步</button>
+      <button class="iconbtn" id="setBtn">⚙ 設定</button>
+    </div>
+  </header>
+
+  <div class="month">
+    <button id="prevM" aria-label="上個月">‹</button>
+    <span id="monthLabel"></span>
+    <button id="nextM" aria-label="下個月">›</button>
+  </div>
+
+  <div class="summary">
+    <div><small>支出</small><b class="exp" id="sumExp">0</b></div>
+    <div><small>收入</small><b class="inc" id="sumInc">0</b></div>
+    <div><small>結餘</small><b id="sumNet">0</b></div>
+  </div>
+
+  <section class="panel">
+    <h2>記一筆</h2>
+    <div class="tabs" id="tabs">
+      <button data-t="支出" class="on">支出</button>
+      <button data-t="收入">收入</button>
+      <button data-t="轉帳">轉帳</button>
+      <button data-t="分期">分期</button>
+    </div>
+
+    <button class="voice" id="voiceBtn">🎤 語音輸入</button>
+    <p class="hint" id="voiceHint">按下後直接說，例如「午餐 120 國泰卡」。</p>
+
+    <label for="amount" id="amountLabel">金額（TWD）</label>
+    <input id="amount" type="number" inputmode="decimal" placeholder="0">
+
+    <div id="periodsBox" class="hidden">
+      <label for="periods">分期期數</label>
+      <input id="periods" type="number" inputmode="numeric" placeholder="例如 12">
+      <p class="hint" id="perPeriod"></p>
+    </div>
+
+    <div id="catBox">
+      <label>分類</label>
+      <div class="chips" id="cats"></div>
+    </div>
+
+    <div>
+      <label id="accLabel">帳戶</label>
+      <div class="chips" id="accs"></div>
+    </div>
+
+    <div id="toBox" class="hidden">
+      <label>轉入帳戶</label>
+      <div class="chips" id="toAccs"></div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label for="date">日期</label>
+        <input id="date" type="date">
+      </div>
+      <div>
+        <label for="note">備註</label>
+        <input id="note" type="text" placeholder="選填">
+      </div>
+    </div>
+
+    <button class="save" id="saveBtn">儲存</button>
+  </section>
+
+  <section class="list">
+    <h3>本月紀錄</h3>
+    <div id="list"></div>
+  </section>
+</div>
+
+<dialog id="setDlg">
+  <h2>設定</h2>
+  <label for="setUrl">Apps Script 網址</label>
+  <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+  <label for="setToken">同步密語（與 Apps Script 內相同）</label>
+  <input id="setToken" type="text" autocomplete="off" placeholder="自訂一串文字">
+  <label for="setAccs">帳戶清單（一行一個）</label>
+  <textarea id="setAccs" rows="5"></textarea>
+  <p class="hint">網址與密語只存在這支手機的瀏覽器裡，不會上傳到 GitHub。</p>
+  <div class="btns">
+    <button id="setCancel">取消</button>
+    <button id="setSave" class="primary">儲存設定</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  var CATS = {
+    '支出': [['餐飲','#f0836f'],['交通','#f0a63f'],['購物','#6fd3a4'],['居家','#6fb4f0'],
+             ['娛樂','#c79cf0'],['醫療','#f06fa8'],['學習','#4fd3d3'],['保險','#9aa09d'],['其他','#9aa09d']],
+    '收入': [['薪資','#6fd3a4'],['獎金','#f0a63f'],['投資','#6fb4f0'],['其他','#9aa09d']],
+    '轉帳': [], '分期': [['分期','#9aa09d']]
+  };
+  var KEYWORDS = {
+    '餐飲':['早餐','午餐','晚餐','宵夜','吃','飯','麵','便當','咖啡','飲料','茶','餐','火鍋','麥當勞'],
+    '交通':['捷運','公車','高鐵','台鐵','火車','計程車','uber','加油','油錢','停車','過路費','機票','悠遊卡'],
+    '購物':['買','蝦皮','momo','網購','衣服','鞋','日用品','超市','全聯','家樂福'],
+    '居家':['房租','水費','電費','瓦斯','網路費','電話費','管理費','家具','傢俱'],
+    '娛樂':['電影','遊戲','KTV','唱歌','旅遊','門票','訂閱','netflix'],
+    '醫療':['看醫生','診所','醫院','藥','掛號','牙醫','健檢'],
+    '學習':['書','課程','學費','補習','教材'],
+    '保險':['保險','保費','健保','勞保']
+  };
+  var DEFAULT_ACCS = ['中國信託（TWD）','國泰世華（TWD）','國泰世華卡（TWD）','現金'];
+
+  var $ = function(id){return document.getElementById(id)};
+  var S = {
+    type:'支出', cat:'餐飲', acc:'', toAcc:'', ym:new Date(),
+    records: load('rec.records', []),
+    cfg: load('rec.cfg', {url:'', token:'', accounts:DEFAULT_ACCS})
+  };
+  if(!S.cfg.accounts || !S.cfg.accounts.length) S.cfg.accounts = DEFAULT_ACCS;
+  S.acc = S.cfg.accounts[0];
+  S.toAcc = S.cfg.accounts[1] || S.cfg.accounts[0];
+
+  function load(k, d){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : d }catch(e){ return d } }
+  function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch(e){} }
+  function fmt(n){ return Math.round(n).toLocaleString('zh-TW') }
+  function pad(n){ return (n<10?'0':'')+n }
+  function today(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()) }
+  function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}) }
+  function toast(msg){
+    var t=$('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.remove('show')},2400);
+  }
+
+  /* ---------- 表單 ---------- */
+  function chips(el, items, current, onPick){
+    el.innerHTML='';
+    items.forEach(function(it){
+      var name = Array.isArray(it) ? it[0] : it;
+      var color = Array.isArray(it) ? it[1] : null;
+      var b=document.createElement('button');
+      b.type='button'; b.className='chip'+(name===current?' on':'');
+      b.innerHTML=(color?'<i style="background:'+color+'"></i>':'')+esc(name);
+      b.onclick=function(){ onPick(name) };
+      el.appendChild(b);
+    });
+  }
+  function renderForm(){
+    var t=S.type;
+    document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.t===t) });
+    $('catBox').classList.toggle('hidden', t==='轉帳' || t==='分期');
+    $('toBox').classList.toggle('hidden', t!=='轉帳');
+    $('periodsBox').classList.toggle('hidden', t!=='分期');
+    $('accLabel').textContent = t==='轉帳' ? '轉出帳戶' : (t==='分期' ? '扣款帳戶' : '帳戶');
+    $('amountLabel').textContent = t==='分期' ? '分期總金額（TWD）' : '金額（TWD）';
+    if(t!=='轉帳' && t!=='分期'){
+      var list = CATS[t].map(function(x){return x[0]});
+      if(list.indexOf(S.cat)<0) S.cat=list[0];
+      chips($('cats'), CATS[t], S.cat, function(n){S.cat=n; renderForm()});
+    }
+    chips($('accs'), S.cfg.accounts, S.acc, function(n){S.acc=n; renderForm()});
+    chips($('toAccs'), S.cfg.accounts, S.toAcc, function(n){S.toAcc=n; renderForm()});
+    updatePerPeriod();
+  }
+  function updatePerPeriod(){
+    var a=parseFloat($('amount').value), p=parseInt($('periods').value,10);
+    $('perPeriod').textContent = (a>0 && p>0) ? '每期約 '+fmt(a/p)+' 元' : '';
+  }
+  $('amount').addEventListener('input', updatePerPeriod);
+  $('periods').addEventListener('input', updatePerPeriod);
+  $('tabs').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    S.type=b.dataset.t;
+    if(S.type==='支出') S.cat='餐飲'; else if(S.type==='收入') S.cat='薪資'; else if(S.type==='分期') S.cat='分期';
+    renderForm();
+  });
+
+  /* ---------- 紀錄 ---------- */
+  function newId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6) }
+  function saveRecord(){
+    var amount=parseFloat($('amount').value);
+    if(!(amount>0)){ toast('請輸入金額'); return }
+    var r={
+      id:newId(), date:$('date').value||today(), type:S.type, amount:amount,
+      category:(S.type==='轉帳')?'':S.cat, account:S.acc,
+      toAccount:(S.type==='轉帳')?S.toAcc:'', note:$('note').value.trim(),
+      periods:0, synced:false, created:new Date().toISOString()
+    };
+    if(S.type==='轉帳' && S.acc===S.toAcc){ toast('轉出與轉入帳戶不能相同'); return }
+    if(S.type==='分期'){
+      var p=parseInt($('periods').value,10);
+      if(!(p>1)){ toast('請輸入分期期數'); return }
+      r.periods=p;
+    }
+    S.records.push(r); save('rec.records', S.records);
+    $('amount').value=''; $('note').value=''; $('periods').value='';
+    updatePerPeriod(); render(); toast('已儲存'); syncAll(true);
+  }
+  $('saveBtn').onclick=saveRecord;
+
+  function render(){
+    var y=S.ym.getFullYear(), m=S.ym.getMonth()+1, key=y+'-'+pad(m);
+    $('monthLabel').textContent=y+' 年 '+m+' 月';
+    var rows=S.records.filter(function(r){return r.date.slice(0,7)===key})
+      .sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:(a.created<b.created?1:-1)});
+    var exp=0, inc=0;
+    rows.forEach(function(r){
+      if(r.type==='支出') exp+=r.amount;
+      else if(r.type==='收入') inc+=r.amount;
+      else if(r.type==='分期') exp+=r.amount/r.periods;
+    });
+    $('sumExp').textContent=fmt(exp); $('sumInc').textContent=fmt(inc);
+    $('sumNet').textContent=fmt(inc-exp);
+    var box=$('list'); box.innerHTML='';
+    if(!rows.length){ box.innerHTML='<p class="hint">這個月還沒有紀錄。</p>'; return }
+    rows.forEach(function(r){
+      var d=document.createElement('div'); d.className='item';
+      var title = r.type==='轉帳' ? '轉帳' : r.category;
+      var sub = r.date.slice(5)+' · '+(r.type==='轉帳' ? r.account+' → '+r.toAccount : r.account)
+        + (r.note?' · '+r.note:'');
+      var amt = r.type==='收入' ? '<span class="inc">+'+fmt(r.amount)+'</span>'
+        : r.type==='轉帳' ? fmt(r.amount)
+        : r.type==='分期' ? '<span class="exp">'+fmt(r.amount)+'</span><small>'+r.periods+' 期</small>'
+        : '<span class="exp">-'+fmt(r.amount)+'</span>';
+      d.innerHTML='<div class="l"><div class="t">'+esc(title)+(r.type==='分期'?'（分期）':'')+'</div><div class="s">'+esc(sub)+'</div></div>'
+        +'<div class="r">'+amt+'<small class="dot '+(r.synced?'done':'pending')+'">'+(r.synced?'已同步':'待同步')+'</small></div>'
+        +'<button aria-label="刪除">✕</button>';
+      d.querySelector('button').onclick=function(){
+        if(!confirm('刪除這筆紀錄？（已同步到試算表的資料不會被刪除）')) return;
+        S.records=S.records.filter(function(x){return x.id!==r.id});
+        save('rec.records', S.records); render();
+      };
+      box.appendChild(d);
+    });
+  }
+  $('prevM').onclick=function(){ S.ym=new Date(S.ym.getFullYear(), S.ym.getMonth()-1, 1); render() };
+  $('nextM').onclick=function(){ S.ym=new Date(S.ym.getFullYear(), S.ym.getMonth()+1, 1); render() };
+
+  /* ---------- 同步到 Google 試算表 ---------- */
+  var syncing=false;
+  function syncAll(quiet){
+    var url=S.cfg.url, token=S.cfg.token;
+    if(!url){ if(!quiet) toast('請先到「設定」填入 Apps Script 網址'); return }
+    var pending=S.records.filter(function(r){return !r.synced});
+    if(!pending.length){ if(!quiet) toast('沒有待同步的紀錄'); return }
+    if(syncing) return; syncing=true;
+    var payload={token:token, records:pending.map(function(r){
+      return {id:r.id,date:r.date,type:r.type,amount:r.amount,category:r.category,account:r.account,
+              toAccount:r.toAccount,note:r.note,periods:r.periods,created:r.created};
+    })};
+    fetch(url,{method:'POST',body:JSON.stringify(payload)})
+      .then(function(res){return res.json()})
+      .then(function(j){
+        if(j && j.ok){
+          var ok={}; (j.saved||[]).forEach(function(id){ok[id]=1});
+          S.records.forEach(function(r){ if(ok[r.id]) r.synced=true });
+          save('rec.records', S.records); render();
+          if(!quiet) toast('已同步 '+(j.saved||[]).length+' 筆');
+        }else{
+          toast('同步失敗：'+((j&&j.error)||'未知錯誤'));
+        }
+      })
+      .catch(function(){ if(!quiet) toast('同步失敗，請確認網路與網址') })
+      .then(function(){ syncing=false });
+  }
+  $('syncBtn').onclick=function(){ syncAll(false) };
+  window.addEventListener('online', function(){ syncAll(true) });
+
+  /* ---------- 設定 ---------- */
+  $('setBtn').onclick=function(){
+    $('setUrl').value=S.cfg.url||''; $('setToken').value=S.cfg.token||'';
+    $('setAccs').value=S.cfg.accounts.join('\n'); $('setDlg').showModal();
+  };
+  $('setCancel').onclick=function(){ $('setDlg').close() };
+  $('setSave').onclick=function(){
+    var accs=$('setAccs').value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
+    S.cfg={url:$('setUrl').value.trim(), token:$('setToken').value.trim(), accounts:accs.length?accs:DEFAULT_ACCS};
+    save('rec.cfg', S.cfg);
+    if(S.cfg.accounts.indexOf(S.acc)<0) S.acc=S.cfg.accounts[0];
+    if(S.cfg.accounts.indexOf(S.toAcc)<0) S.toAcc=S.cfg.accounts[1]||S.cfg.accounts[0];
+    $('setDlg').close(); renderForm(); toast('設定已儲存'); syncAll(true);
+  };
+
+  /* ---------- 語音輸入 ---------- */
+  var DIG={'零':0,'〇':0,'一':1,'二':2,'兩':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
+  function cnToNum(s){
+    var total=0, section=0, num=0, last=0;
+    for(var i=0;i<s.length;i++){
+      var c=s[i];
+      if(c in DIG){ num=DIG[c] }
+      else if(c==='十'){ section+=(num||1)*10; num=0; last=10 }
+      else if(c==='百'){ section+=(num||1)*100; num=0; last=100 }
+      else if(c==='千'){ section+=(num||1)*1000; num=0; last=1000 }
+      else if(c==='萬'||c==='万'){ total+=(section+num||1)*10000; section=0; num=0; last=10000 }
+    }
+    // 口語省略單位：「三千五」＝3500、「兩萬三」＝23000
+    if(num>0 && last>=100) num=num*(last/10);
+    return total+section+num;
+  }
+  function parseSpeech(text){
+    var t=text.replace(/，|,/g,'').replace(/\s+/g,' ');
+    var amount=null;
+    var m=t.match(/(\d+(?:\.\d+)?)\s*(?:元|塊|块)?/);
+    if(m) amount=parseFloat(m[1]);
+    else{
+      var c=t.match(/[零〇一二兩三四五六七八九十百千萬万]+/);
+      if(c){ var n=cnToNum(c[0]); if(n>0) amount=n }
+    }
+    var acc=null, low=t.toLowerCase();
+    S.cfg.accounts.forEach(function(a){
+      var base=a.replace(/（.*?）|\(.*?\)/g,'');
+      if(base && low.indexOf(base.toLowerCase())>=0) acc=a;
+    });
+    if(!acc){
+      if(/卡/.test(t)){ var cc=S.cfg.accounts.filter(function(a){return /卡/.test(a)})[0]; if(cc) acc=cc }
+      else if(/現金/.test(t)){ var cs=S.cfg.accounts.filter(function(a){return /現金/.test(a)})[0]; if(cs) acc=cs }
+    }
+    var cat=null;
+    Object.keys(KEYWORDS).forEach(function(k){
+      if(!cat && KEYWORDS[k].some(function(w){return low.indexOf(w.toLowerCase())>=0})) cat=k;
+    });
+    var isIncome=/薪水|薪資|收入|入帳|獎金|收到/.test(t);
+    return {amount:amount, acc:acc, cat:cat, income:isIncome};
+  }
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition, rec=null;
+  if(!SR){
+    $('voiceBtn').classList.add('hidden');
+    $('voiceHint').textContent='這個瀏覽器不支援語音辨識，請改用鍵盤上的麥克風。';
+  }
+  $('voiceBtn').onclick=function(){
+    if(!SR) return;
+    if(rec){ rec.stop(); return }
+    rec=new SR(); rec.lang='zh-TW'; rec.interimResults=false; rec.maxAlternatives=1;
+    var btn=$('voiceBtn');
+    rec.onstart=function(){ btn.classList.add('listening'); btn.textContent='🎙 聆聽中…（再按一次停止）' };
+    rec.onresult=function(ev){
+      var text=ev.results[0][0].transcript;
+      var p=parseSpeech(text);
+      if(p.income && S.type==='支出'){ S.type='收入'; S.cat='薪資' }
+      if(p.amount) $('amount').value=p.amount;
+      if(p.cat && S.type==='支出') S.cat=p.cat;
+      if(p.acc) S.acc=p.acc;
+      $('note').value=text;
+      renderForm();
+      toast(p.amount ? '已辨識：'+text : '沒聽到金額，請手動輸入');
+    };
+    rec.onerror=function(e){
+      toast(e.error==='not-allowed' ? '麥克風被拒絕，請在瀏覽器網站設定中允許' : '語音辨識失敗：'+e.error);
+    };
+    rec.onend=function(){ rec=null; btn.classList.remove('listening'); btn.textContent='🎤 語音輸入' };
+    try{ rec.start() }catch(e){ rec=null }
+  };
+
+  /* ---------- 啟動 ---------- */
+  $('date').value=today();
+  renderForm(); render();
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}) });
+  }
+  syncAll(true);
+})();
+</script>
+</body>
+</html>
