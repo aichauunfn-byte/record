@@ -23,6 +23,8 @@ body{padding:env(safe-area-inset-top) 0 calc(24px + env(safe-area-inset-bottom))
 .wrap{max-width:560px;margin:0 auto;padding:0 16px}
 header{display:flex;align-items:center;justify-content:space-between;padding:16px 0 8px}
 h1{font-size:24px;margin:0}
+.who{font-size:13px;color:var(--muted);margin-top:2px}
+.who b{color:var(--text);font-weight:600}
 .iconbtn{background:var(--card2);border:1px solid var(--line);color:var(--text);
   border-radius:12px;padding:8px 12px;font-size:15px}
 .month{display:flex;align-items:center;justify-content:center;gap:20px;margin:4px 0 12px;font-size:18px}
@@ -84,7 +86,10 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
 <body>
 <div class="wrap">
   <header>
-    <h1>隨手記帳</h1>
+    <div>
+      <h1>隨手記帳</h1>
+      <div class="who" id="whoLabel"></div>
+    </div>
     <div style="display:flex;gap:8px">
       <button class="iconbtn" id="syncBtn">☁ 同步</button>
       <button class="iconbtn" id="setBtn">⚙ 設定</button>
@@ -161,6 +166,9 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
 
 <dialog id="setDlg">
   <h2>設定</h2>
+  <label for="setWho">記帳人名稱</label>
+  <input id="setWho" type="text" maxlength="20" autocomplete="off" placeholder="例如：小明">
+  <p class="hint">每筆紀錄都會帶上這個名字，同步到試算表的「記帳人」欄。</p>
   <label for="setUrl">Apps Script 網址</label>
   <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
   <label for="setToken">同步密語（與 Apps Script 內相同）</label>
@@ -202,9 +210,10 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
   var S = {
     type:'支出', cat:'餐飲', acc:'', toAcc:'', ym:new Date(),
     records: load('rec.records', []),
-    cfg: load('rec.cfg', {url:'', token:'', accounts:DEFAULT_ACCS})
+    cfg: load('rec.cfg', {url:'', token:'', accounts:DEFAULT_ACCS, who:''})
   };
   if(!S.cfg.accounts || !S.cfg.accounts.length) S.cfg.accounts = DEFAULT_ACCS;
+  if(typeof S.cfg.who !== 'string') S.cfg.who = '';
   S.acc = S.cfg.accounts[0];
   S.toAcc = S.cfg.accounts[1] || S.cfg.accounts[0];
 
@@ -271,6 +280,7 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
       id:newId(), date:$('date').value||today(), type:S.type, amount:amount,
       category:(S.type==='轉帳')?'':S.cat, account:S.acc,
       toAccount:(S.type==='轉帳')?S.toAcc:'', note:$('note').value.trim(),
+      who:S.cfg.who||'',
       periods:0, synced:false, created:new Date().toISOString()
     };
     if(S.type==='轉帳' && S.acc===S.toAcc){ toast('轉出與轉入帳戶不能相同'); return }
@@ -304,7 +314,7 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
       var d=document.createElement('div'); d.className='item';
       var title = r.type==='轉帳' ? '轉帳' : r.category;
       var sub = r.date.slice(5)+' · '+(r.type==='轉帳' ? r.account+' → '+r.toAccount : r.account)
-        + (r.note?' · '+r.note:'');
+        + (r.who?' · '+r.who:'') + (r.note?' · '+r.note:'');
       var amt = r.type==='收入' ? '<span class="inc">+'+fmt(r.amount)+'</span>'
         : r.type==='轉帳' ? fmt(r.amount)
         : r.type==='分期' ? '<span class="exp">'+fmt(r.amount)+'</span><small>'+r.periods+' 期</small>'
@@ -333,7 +343,7 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
     if(syncing) return; syncing=true;
     var payload={token:token, records:pending.map(function(r){
       return {id:r.id,date:r.date,type:r.type,amount:r.amount,category:r.category,account:r.account,
-              toAccount:r.toAccount,note:r.note,periods:r.periods,created:r.created};
+              toAccount:r.toAccount,note:r.note,who:r.who||'',periods:r.periods,created:r.created};
     })};
     fetch(url,{method:'POST',body:JSON.stringify(payload)})
       .then(function(res){return res.json()})
@@ -354,15 +364,20 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
   window.addEventListener('online', function(){ syncAll(true) });
 
   /* ---------- 設定 ---------- */
+  function updateWho(){
+    var el=$('whoLabel');
+    el.innerHTML = S.cfg.who ? '記帳人：<b>'+esc(S.cfg.who)+'</b>' : '尚未設定記帳人（到「設定」填寫）';
+  }
   $('setBtn').onclick=function(){
-    $('setUrl').value=S.cfg.url||''; $('setToken').value=S.cfg.token||'';
+    $('setWho').value=S.cfg.who||''; $('setUrl').value=S.cfg.url||''; $('setToken').value=S.cfg.token||'';
     $('setAccs').value=S.cfg.accounts.join('\n'); $('setDlg').showModal();
   };
   $('setCancel').onclick=function(){ $('setDlg').close() };
   $('setSave').onclick=function(){
     var accs=$('setAccs').value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
-    S.cfg={url:$('setUrl').value.trim(), token:$('setToken').value.trim(), accounts:accs.length?accs:DEFAULT_ACCS};
-    save('rec.cfg', S.cfg);
+    S.cfg={who:$('setWho').value.trim(), url:$('setUrl').value.trim(), token:$('setToken').value.trim(),
+           accounts:accs.length?accs:DEFAULT_ACCS};
+    save('rec.cfg', S.cfg); updateWho();
     if(S.cfg.accounts.indexOf(S.acc)<0) S.acc=S.cfg.accounts[0];
     if(S.cfg.accounts.indexOf(S.toAcc)<0) S.toAcc=S.cfg.accounts[1]||S.cfg.accounts[0];
     $('setDlg').close(); renderForm(); toast('設定已儲存'); syncAll(true);
@@ -440,7 +455,7 @@ dialog .btns .primary{background:var(--accent);border-color:var(--accent-line);f
 
   /* ---------- 啟動 ---------- */
   $('date').value=today();
-  renderForm(); render();
+  updateWho(); renderForm(); render();
   if('serviceWorker' in navigator){
     window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}) });
   }

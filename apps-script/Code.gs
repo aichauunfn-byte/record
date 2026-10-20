@@ -10,7 +10,7 @@
  */
 var TOKEN = '請改成你自己的密語';
 var SHEET_NAME = '隨手記帳';
-var HEADERS = ['ID', '日期', '類型', '金額', '分類', '帳戶', '轉入帳戶', '備註', '分期期數', '建立時間'];
+var HEADERS = ['ID', '日期', '類型', '金額', '分類', '帳戶', '轉入帳戶', '備註', '分期期數', '建立時間', '記帳人'];
 
 function doGet() {
   return json_({ ok: true, message: '隨手記帳接收程式運作中' });
@@ -39,7 +39,7 @@ function doPost(e) {
         saved.push(r.id);                       // 已存在的也回報成功，避免 App 一直重送
         if (existing[String(r.id)]) return;
         rows.push([r.id, r.date, r.type, r.amount, r.category, r.account,
-                   r.toAccount, r.note, r.periods || '', r.created]);
+                   r.toAccount, r.note, r.periods || '', r.created, r.who || '']);
       });
       if (rows.length) {
         sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, HEADERS.length).setValues(rows);
@@ -58,8 +58,12 @@ function getSheet_() {
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
     sheet.setFrozenRows(1);
+  }
+  // 標題列和程式不一致時（例如新增了「記帳人」欄），自動補上，不動下面的資料
+  var current = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+  if (current.join('|') !== HEADERS.join('|')) {
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
   }
   return sheet;
 }
