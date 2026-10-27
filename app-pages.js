@@ -637,7 +637,7 @@
       btn('匯入備份', '', function () { file.click(); })), file,
       h('div', { class: 'btnrow' }, btn('全部重新同步到試算表', '', function () {
         if (!confirm('把所有紀錄重新送一次到試算表？（相同 ID 的列會被更新，不會重複）')) return;
-        D.entries.forEach(function (e) { e.synced = false; }); u.store('rec.snap', ''); f.saveAll(); R.render(); R.sync(false);
+        D.entries.forEach(function (e) { e.synced = false; }); u.store('rec.snap', ''); f.saveAll(true); R.render(); R.sync(false);
       })));
     v.append(bb);
     v.append(h('p', { class: 'hint center' }, '隨手記帳 · 版本 3'));
@@ -685,6 +685,7 @@
     $('whoLabel').append(cfg.who ? document.createTextNode('記帳人：') : document.createTextNode('尚未設定記帳人（到「基本資料」填寫）'));
     if (cfg.who) $('whoLabel').append(h('b', {}, cfg.who));
     document.querySelectorAll('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.p === UI.tab); });
+    $('undoBtn').disabled = !R.undoCount();
     var v = $('view'); var sy = window.scrollY;
     v.innerHTML = '';
     (PAGES[UI.tab] || pageList)(v);
@@ -695,6 +696,7 @@
     b.onclick = function () { UI.tab = b.dataset.p; R.render(); window.scrollTo(0, 0); };
   });
   $('syncBtn').onclick = function () { R.sync(false); };
+  $('undoBtn').onclick = function () { R.undo(); };
   window.addEventListener('online', function () { R.sync(true); });
   $('dlg').addEventListener('click', function (ev) { if (ev.target === this) R.closeDlg(); });
 

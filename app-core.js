@@ -92,7 +92,33 @@
   if (typeof cfg.token !== 'string') cfg.token = '';
   var UI = R.UI = { tab: 'list', ym: new Date(), filterAcct: null, filterWho: null };
 
-  function saveAll() { store('rec.v3', { e: D.entries, a: D.accounts, p: D.policies, f: D.family, r: D.rates }); }
+  // 每次使用者改動前，把上一份資料存進「還原」清單（最多 20 步）；同步標記、自動記錄不算一步
+  function saveAll(noUndo) {
+    var next = JSON.stringify({ e: D.entries, a: D.accounts, p: D.policies, f: D.family, r: D.rates });
+    try {
+      var prev = localStorage.getItem('rec.v3');
+      if (!noUndo && prev && prev !== next) {
+        var st = load('rec.undo', []); st.push(prev);
+        while (st.length > 20 || (st.length > 1 && JSON.stringify(st).length > 2500000)) st.shift();
+        localStorage.setItem('rec.undo', JSON.stringify(st));
+      }
+      localStorage.setItem('rec.v3', next);
+    } catch (e) {}
+  }
+  R.undoCount = function () { return load('rec.undo', []).length; };
+  R.undo = function () {
+    var st = load('rec.undo', []);
+    if (!st.length) { toast('沒有可還原的動作'); return; }
+    var o = JSON.parse(st.pop()), cur = {};
+    D.entries.forEach(function (e) { var c = Object.assign({}, e); delete c.synced; cur[e.id] = JSON.stringify(c); });
+    D.entries = o.e || []; D.accounts = o.a || []; D.policies = o.p || []; D.family = o.f || []; D.rates = o.r || {};
+    D.entries.forEach(function (e) { // 被還原的紀錄內容和現在不同時，要重新同步，試算表才會跟著更新
+      var c = Object.assign({}, e); delete c.synced;
+      if (cur[e.id] && cur[e.id] !== JSON.stringify(c)) e.synced = false;
+    });
+    store('rec.undo', st); saveAll(true); R.render(); R.sync(true);
+    toast('已還原上一步（還可還原 ' + st.length + ' 步）');
+  };
   function saveCfg() { store('rec.cfg', { who: cfg.who, url: cfg.url, token: cfg.token }); }
 
   function loadAll() {
@@ -344,7 +370,7 @@
     var made = 0;
     D.policies.forEach(function (p) { made += recordDue(p); });
     if (made || R.autoSkipped) {
-      saveAll();
+      saveAll(true);
       toast((made ? '已自動記錄 ' + made + ' 筆保費 / 分期支出' : '') + (made && R.autoSkipped ? '；' : '') +
         (R.autoSkipped ? '有 ' + R.autoSkipped + ' 筆因已有相同日期、帳戶、金額的記錄而略過' : ''));
       R.autoSkipped = 0;
@@ -610,7 +636,7 @@
         if (j && j.ok) {
           var ok = {}; (j.saved || []).forEach(function (id) { ok[id] = 1; });
           D.entries.forEach(function (e) { if (ok[e.id]) e.synced = true; });
-          saveAll();
+          saveAll(true);
           if (needSnap && j.snapshot === true) store('rec.snap', snapStr);
           R.render();
           if (!quiet) toast('已同步 ' + (j.saved || []).length + ' 筆' + (needSnap ? (j.snapshot === true ? '，並更新帳戶／保單／家人' : '（Apps Script 還是舊版，帳戶等資料未更新）') : ''));

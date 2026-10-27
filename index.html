@@ -141,6 +141,7 @@ dialog .save{margin-top:18px}
 dialog .btns{position:sticky;bottom:-18px;background:var(--card);padding-top:8px}
 dialog select,dialog input[type=date]{font-size:16px}
 select{appearance:auto}
+.iconbtn:disabled{opacity:.35}
 </style>
 </head>
 <body>
@@ -150,7 +151,7 @@ select{appearance:auto}
       <h1>隨手記帳</h1>
       <div class="who" id="whoLabel"></div>
     </div>
-    <button class="iconbtn" id="syncBtn">☁ 同步</button>
+    <div style="display:flex;gap:8px"><button class="iconbtn" id="undoBtn" aria-label="還原上一步">↶ 還原</button><button class="iconbtn" id="syncBtn">☁ 同步</button></div>
   </header>
   <main id="view"></main>
 </div>
