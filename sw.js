@@ -1,5 +1,5 @@
 // 簡單的離線快取：App 外殼用快取優先，其他請求（含同步）一律走網路
-var CACHE = 'record-v3';
+var CACHE = 'record-v4';
 var SHELL = ['./', './index.html', './app-core.js', './app-pages.js', './manifest.webmanifest', './icons/icon.svg',
              './icons/icon-192.png', './icons/icon-512.png'];
 

@@ -171,12 +171,12 @@
   function polRecord(p, k, date) {
     var had = D.entries.filter(function (x) { return x.pol === p.id && x.period === k; })[0];
     if (had) { toast('這一期已經記錄過了（' + had.date + '）'); return; }
-    R.openEntry(null, { type: 'expense', cat: f.polCat(p), pol: p.id, who: p.insured || '', acct: p.acct, period: k, amount: f.polAmt(p, k), date: ymd(date), note: p.name + ' ' + f.periodText(p, k) });
+    R.openEntry(null, { type: 'expense', cat: f.polCat(p), pol: p.id, who: p.insured || '', acct: p.acct, period: k, amount: f.polAmt(p, k), date: ymd(date), note: f.polNote(p, k) });
   }
   function annual(p) { return p.amount * 12 / p.freq; }
   function pagePlan(v) {
-    v.append(h('div', { class: 'btnrow' }, btn('新增保單', 'primary', function () { openPol(null); }), btn('新增分期', '', function () { openPol(null, 'inst'); }), btn('檢查重複', '', openDup)));
-    if (!D.policies.length) { v.append(h('p', { class: 'hint' }, '還沒有保單或分期。保單可設定每期扣款日與金額，到期會自動記一筆支出；信用卡分期請選「新增分期」。')); return; }
+    v.append(h('div', { class: 'btnrow' }, btn('新增保單', 'primary', function () { openPol(null); }), btn('新增分期', '', function () { openPol(null, 'inst'); }), btn('新增貸款', '', function () { openLoan(null); }), btn('檢查重複', '', openDup)));
+    if (!D.policies.length) { v.append(h('p', { class: 'hint' }, '還沒有保單、分期或貸款。保單可設定每期扣款日與金額，到期會自動記一筆支出；信用卡分期請選「新增分期」，房貸、車貸、信貸請選「新增貸款」。')); return; }
 
     // 即將到期
     var items = [];
@@ -197,7 +197,7 @@
     }
 
     // 年繳保費
-    var ins = D.policies.filter(function (p) { return p.kind !== 'inst' && !f.polInfo(p).finished; });
+    var ins = D.policies.filter(function (p) { return p.kind !== 'inst' && p.kind !== 'loan' && !f.polInfo(p).finished; });
     if (ins.length) {
       var pc = sec('');
       var tot = 0; ins.forEach(function (p) { tot += annual(p) * (f.rateOf(f.acctCur(p.acct)) || 0); });
@@ -212,7 +212,7 @@
           var rows = groups[who], sum = rows.reduce(function (t, p) { return t + annual(p) * (f.rateOf(f.acctCur(p.acct)) || 0); }, 0);
           pc.append(h('div', { class: 'dayh' }, who + '　' + fmt(sum, 'TWD') + ' / 年'));
           rows.forEach(function (p) {
-            pc.append(h('div', { class: 'item', onclick: function () { openPol(p); } }, h('div', { class: 'l' }, h('div', { class: 't' }, p.name), h('div', { class: 's' }, (p.insurer || '') + ' · ' + POL_FREQ[p.freq] + ' ' + fmt(p.amount, f.acctCur(p.acct)))),
+            pc.append(h('div', { class: 'item', onclick: function () { editPol(p); } }, h('div', { class: 'l' }, h('div', { class: 't' }, p.name), h('div', { class: 's' }, (p.insurer || '') + ' · ' + POL_FREQ[p.freq] + ' ' + fmt(p.amount, f.acctCur(p.acct)))),
               h('div', { class: 'r' }, fmt(annual(p), f.acctCur(p.acct)) + ' / 年')));
           });
         });
@@ -227,10 +227,30 @@
       var ic = sec('');
       ic.append(h('button', { class: 'fold', onclick: function () { S.instOpen = !S.instOpen; R.render(); } }, h('b', {}, '分期剩餘　'), h('span', {}, fmt(totalLeft, 'TWD')), h('span', { class: 'arrow' }, S.instOpen ? '▲' : '▼')));
       if (S.instOpen) insts.forEach(function (x) {
-        ic.append(h('div', { class: 'item', onclick: function () { openPol(x.p); } }, h('div', { class: 'l' }, h('div', { class: 't' }, x.p.name), h('div', { class: 's' }, f.acctName(x.p.acct) + ' · 剩 ' + x.left.n + ' 期')),
+        ic.append(h('div', { class: 'item', onclick: function () { editPol(x.p); } }, h('div', { class: 'l' }, h('div', { class: 't' }, x.p.name), h('div', { class: 's' }, f.acctName(x.p.acct) + ' · 剩 ' + x.left.n + ' 期')),
           h('div', { class: 'r' }, fmt(x.left.sum, f.acctCur(x.p.acct)))));
       });
       v.append(ic);
+    }
+
+    // 貸款總覽
+    var loans = D.policies.filter(function (p) { return p.kind === 'loan'; });
+    if (loans.length) {
+      var lc = sec('貸款總覽'), tr = 0, tm = 0;
+      var rows = loans.map(function (p) { var st = f.loanState(p), rt = f.rateOf(f.acctCur(p.acct)) || 0; tr += st.remain * rt; tm += st.nextPay * rt; return { p: p, st: st }; });
+      lc.append(h('div', { class: 'summary' },
+        h('div', {}, h('small', {}, '剩餘本金'), h('b', { class: 'exp' }, fmt(tr, 'TWD'))),
+        h('div', {}, h('small', {}, '每月要繳'), h('b', {}, fmt(tm, 'TWD'))),
+        h('div', {}, h('small', {}, '貸款筆數'), h('b', {}, loans.length + ' 筆'))));
+      rows.forEach(function (x) {
+        var p = x.p, st = x.st, cur = f.acctCur(p.acct), pct = p.total ? st.paid / p.total * 100 : 0;
+        lc.append(h('div', { class: 'item col', onclick: function () { openLoan(p); } },
+          h('div', { class: 'cr1' }, h('b', {}, p.name, h('span', { class: 'tag' }, C.LOAN_TYPES[p.loanType] || '貸款')), h('span', {}, st.done ? '已繳清' : '剩 ' + fmt(st.remain, cur))),
+          bar(pct, '#6fb4f0'),
+          h('div', { class: 's' }, (p.lender ? p.lender + ' · ' : '') + '年利率 ' + p.rate + '% · 已繳 ' + st.paid + ' / ' + p.total + ' 期' + (st.done ? '' : ' · 每期 ' + fmt(st.nextPay, cur)) + ' · 預計 ' + st.end.getFullYear() + '/' + (st.end.getMonth() + 1) + ' 繳清'),
+          st.done ? null : h('div', { class: 's' }, '剩餘利息約 ' + fmt(st.interestLeft, cur))));
+      });
+      v.append(lc);
     }
 
     // 清單
@@ -238,9 +258,9 @@
     D.policies.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); }).forEach(function (p) {
       var i = f.polInfo(p), cur = f.acctCur(p.acct), left = p.total > 0 ? f.polLeft(p) : null;
       var st = i.finished ? '已結束' : '下次 ' + u.mdt(i.date) + (i.done ? '（已記錄）' : '');
-      lb.append(h('div', { class: 'item', onclick: function () { openPol(p); } },
-        h('div', { class: 'l' }, h('div', { class: 't' }, p.name, h('span', { class: 'tag' }, p.kind === 'inst' ? '分期' : '保單')),
-          h('div', { class: 's' }, (p.insured ? p.insured + ' · ' : '') + (p.kind === 'inst' ? '每月' : POL_FREQ[p.freq]) + ' · ' + f.acctName(p.acct) + ' · ' + st + (left ? ' · 剩 ' + left.n + ' 期' : ''))),
+      lb.append(h('div', { class: 'item', onclick: function () { editPol(p); } },
+        h('div', { class: 'l' }, h('div', { class: 't' }, p.name, h('span', { class: 'tag' }, p.kind === 'inst' ? '分期' : p.kind === 'loan' ? (C.LOAN_TYPES[p.loanType] || '貸款') : '保單')),
+          h('div', { class: 's' }, (p.insured ? p.insured + ' · ' : '') + (p.kind === 'inst' || p.kind === 'loan' ? '每月' : POL_FREQ[p.freq]) + ' · ' + f.acctName(p.acct) + ' · ' + st + (left ? ' · 剩 ' + left.n + ' 期' : ''))),
         h('div', { class: 'r' }, fmt(p.amount, cur), p.firstAmt > 0 ? h('small', {}, '首期 ' + fmt(p.firstAmt, cur)) : null)));
     });
     v.append(lb);
@@ -332,6 +352,83 @@
   }
   R.openPol = openPol;
 
+  function editPol(p) { if (p.kind === 'loan') openLoan(p); else openPol(p); }
+
+  function openLoan(p) {
+    var dr = p ? Object.assign({}, p) : { id: null, kind: 'loan', loanType: 'house', acct: f.lastAcct(), freq: 1, method: 'annuity', grace: 0 };
+    var extMode = p && f.isExt(p.acct), type = dr.loanType || 'house', method = dr.method || 'annuity';
+    R.openDlg((p ? '修改' : '新增') + '貸款', function (b) {
+      var typeBox = h('div', {}), accBox = h('div', {}), methBox = h('div', {}), prev = h('div', { class: 'hint' });
+      function drawType() { typeBox.innerHTML = ''; typeBox.append(u.chipRow(Object.keys(C.LOAN_TYPES).map(function (k) { return { v: k, t: C.LOAN_TYPES[k] }; }), type, function (v) { type = v; drawType(); })); }
+      function drawMeth() { methBox.innerHTML = ''; methBox.append(u.chipRow([{ v: 'annuity', t: '本息平均攤還（每期金額固定）' }, { v: 'principal', t: '本金平均攤還（越繳越少）' }], method, function (v) { method = v; drawMeth(); update(); })); }
+      var name = h('input', { type: 'text', value: dr.name || '', placeholder: '例如：自宅房貸、Tesla 車貸' });
+      var lender = h('input', { type: 'text', value: dr.lender || '', placeholder: '例如：台灣銀行' });
+      var principal = h('input', { type: 'number', step: 'any', inputmode: 'decimal', value: dr.principal || '', placeholder: '貸款總額', oninput: function () { update(); } });
+      var rate = h('input', { type: 'number', step: 'any', inputmode: 'decimal', value: dr.rate != null ? dr.rate : '', placeholder: '例如 2.2', oninput: function () { update(); } });
+      var total = h('input', { type: 'number', inputmode: 'numeric', value: dr.total || '', placeholder: '例如 240（20 年）', oninput: function () { update(); } });
+      var grace = h('input', { type: 'number', inputmode: 'numeric', value: dr.grace || '', placeholder: '沒有就留空', oninput: function () { update(); } });
+      var fixedPay = h('input', { type: 'number', step: 'any', inputmode: 'decimal', value: dr.fixedPay || '', placeholder: '銀行給的每期金額，沒有就留空', oninput: function () { update(); } });
+      var first = h('input', { type: 'date', value: dr.first || '', onchange: function () { update(); } });
+      var autoRec = h('input', { type: 'checkbox', checked: dr.autoRec !== false });
+      var err = h('p', { class: 'err' });
+      var ext = h('input', { type: 'text', placeholder: '其他帳戶名稱', value: extMode ? String(dr.acct).slice(2) : '' });
+      function drawAcc() {
+        accBox.innerHTML = '';
+        var items = f.sortedAccounts().filter(function (a) { return a.kind !== 'card'; }).map(function (a) { return { v: a.id, t: f.fullName(a) }; }).concat([{ v: '__ext', t: '其他帳戶（未納入管理）' }]);
+        accBox.append(u.chipRow(items, extMode ? '__ext' : dr.acct, function (x) { if (x === '__ext') extMode = true; else { extMode = false; dr.acct = x; } drawAcc(); }));
+        if (extMode) accBox.append(ext);
+      }
+      function calc() {
+        var pr = parseFloat(principal.value), rt = parseFloat(rate.value), n = parseInt(total.value, 10), g = parseInt(grace.value, 10) || 0;
+        if (!(pr > 0) || !isFinite(rt) || rt < 0 || !(n >= 1) || g >= n) return null;
+        var cur = f.acctCur(extMode ? '__ext' : dr.acct);
+        return f.loanSchedule(pr, rt, n, method, g, parseFloat(fixedPay.value) || 0, cur);
+      }
+      function update() {
+        var s = calc(), cur = f.acctCur(extMode ? '__ext' : dr.acct);
+        if (!s) { prev.textContent = ''; return; }
+        var ti = s.reduce(function (t, x) { return t + x.int; }, 0), g = parseInt(grace.value, 10) || 0, big = s[Math.min(g, s.length - 1)];
+        prev.textContent = '試算：' + (g ? '寬限期每期利息約 ' + fmt(s[0].pay, cur) + '；之後' : '') + (method === 'principal' ? '第一期 ' + fmt(big.pay, cur) + '，逐期遞減' : '每期 ' + fmt(big.pay, cur)) + '，總利息約 ' + fmt(ti, cur) + '。實際金額以銀行為準。';
+      }
+      drawType(); drawMeth(); drawAcc(); update();
+      b.append(h('label', {}, '貸款種類'), typeBox, u.field('名稱', name), u.field('貸款機構', lender), u.field('貸款總額', principal), u.field('年利率（%）', rate, '機動利率調整時，直接改這裡，會依新利率重算；已記錄的支出不會變。'),
+        u.field('總期數（月）', total, '房貸 20 年＝240 期，車貸 5 年＝60 期。'), h('label', {}, '還款方式'), methBox, u.field('寬限期（月，只繳利息）', grace),
+        u.field('每期固定金額（選填）', fixedPay, '只對「本息平均攤還」有用，銀行給的金額和試算有小差異時填。'),
+        u.field('第一期扣款日', first, '舊貸款請填最早那一期的日期，已過的期數會自動算成已繳。'), h('label', {}, '扣款帳戶'), accBox, prev,
+        h('label', { class: 'chk' }, autoRec, '到期自動記一筆支出（分類：貸款）'), err,
+        h('div', { class: 'btns' }, btn('取消', '', R.closeDlg), btn('儲存', 'primary', function () {
+          var nm = name.value.trim(); if (!nm) { err.textContent = '請輸入名稱。'; return; }
+          var acct = extMode ? 'x:' + ext.value.trim() : dr.acct;
+          if (extMode && !ext.value.trim()) { err.textContent = '請輸入其他帳戶的名稱。'; return; }
+          if (!acct) { err.textContent = '請選擇扣款帳戶。'; return; }
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(first.value)) { err.textContent = '請選擇第一期扣款日。'; return; }
+          var n = parseInt(total.value, 10), g = parseInt(grace.value, 10) || 0;
+          if (!(parseFloat(principal.value) > 0)) { err.textContent = '請輸入貸款總額。'; return; }
+          if (!(parseFloat(rate.value) >= 0)) { err.textContent = '請輸入年利率（0 以上）。'; return; }
+          if (!(n >= 1 && n <= 600)) { err.textContent = '總期數請填 1 到 600。'; return; }
+          if (g < 0 || g >= n) { err.textContent = '寬限期必須小於總期數。'; return; }
+          var s = calc(); if (!s) { err.textContent = '請檢查金額、利率與期數。'; return; }
+          var cur = f.acctCur(acct);
+          var np = { id: dr.id || u.newId('p_'), ts: dr.ts || Date.now(), name: nm, kind: 'loan', loanType: type, lender: lender.value.trim(), acct: acct, freq: 1,
+            principal: u.roundCur(parseFloat(principal.value), cur), rate: parseFloat(rate.value), total: n, method: method, grace: g, fixedPay: parseFloat(fixedPay.value) || 0,
+            first: first.value, sched: s, amount: s[Math.min(g, n - 1)].pay, autoRec: autoRec.checked, autoK: -1, holder: '', insured: '' };
+          if (dr.since) np.since = dr.since;
+          if (dr.skip) np.skip = dr.skip;
+          if (p && p.first === first.value && p.autoK >= 0) np.autoK = p.autoK;
+          if (p) D.policies = D.policies.map(function (x) { return x.id === np.id ? np : x; }); else D.policies.push(np);
+          f.autoRecordPolicies(); f.saveAll(); R.closeDlg(); R.render(); R.sync(true); toast('已儲存');
+        })));
+      if (p) {
+        var armed = false, delb = btn('刪除', 'danger', function () {
+          if (!armed) { armed = true; delb.textContent = '再按一次確認刪除（已記錄的支出會保留）'; return; }
+          D.policies = D.policies.filter(function (x) { return x.id !== p.id; });
+          f.saveAll(); R.closeDlg(); R.render(); toast('已刪除');
+        });
+        b.append(delb);
+      }
+    });
+  }
+
   function openDup() {
     var groups = {};
     D.entries.forEach(function (e) { if (e.type === 'expense') (groups[e.acct + '|' + e.date + '|' + e.amount] = groups[e.acct + '|' + e.date + '|' + e.amount] || []).push(e); });
@@ -391,9 +488,9 @@
       v.append(breakdown('花在誰身上', function (e) { return e.who || '未指定'; }, function (k, i) { return pal[i % pal.length]; }, 'who'));
     }
     var polOf = function (e) { return e.pol ? D.policies.filter(function (p) { return p.id === e.pol; })[0] : null; };
-    if (monthExp.some(function (e) { var p = polOf(e); return p && p.kind !== 'inst'; })) {
+    if (monthExp.some(function (e) { var p = polOf(e); return p && p.kind !== 'inst' && p.kind !== 'loan'; })) {
       var pal2 = ['#f0836f', '#6fb4f0', '#f0a63f', '#6fd3a4', '#c79cf0'];
-      v.append(breakdown('保費（依保險公司）', function (e) { var p = polOf(e); return p && p.kind !== 'inst' ? (p.insurer || '未填保險公司') : null; }, function (k, i) { return pal2[i % pal2.length]; }, 'ins'));
+      v.append(breakdown('保費（依保險公司）', function (e) { var p = polOf(e); return p && p.kind !== 'inst' && p.kind !== 'loan' ? (p.insurer || '未填保險公司') : null; }, function (k, i) { return pal2[i % pal2.length]; }, 'ins'));
     }
 
     // 近 6 個月收支

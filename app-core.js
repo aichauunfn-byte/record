@@ -4,10 +4,10 @@
   var R = window.R = {};
 
   var CATS = {
-    expense: ['餐飲', '交通', '購物', '居家', '娛樂', '醫療', '學習', '保險', '分期', '其他'],
+    expense: ['餐飲', '交通', '購物', '居家', '娛樂', '醫療', '學習', '保險', '分期', '貸款', '其他'],
     income: ['薪資', '獎金', '投資', '其他']
   };
-  var CAT_COLORS = ['#f0836f', '#f0a63f', '#6fd3a4', '#6fb4f0', '#c79cf0', '#f06fa8', '#4fd3d3', '#9aa09d', '#d3c14f', '#7f8c8a'];
+  var CAT_COLORS = ['#f0836f', '#f0a63f', '#6fd3a4', '#6fb4f0', '#c79cf0', '#f06fa8', '#4fd3d3', '#9aa09d', '#d3c14f', '#b08968', '#7f8c8a'];
   var CURS = {
     TWD: { sym: 'NT$', dec: 0, name: '台幣' }, JPY: { sym: '¥', dec: 0, name: '日圓' },
     USD: { sym: 'US$', dec: 2, name: '美元' }, EUR: { sym: '€', dec: 2, name: '歐元' },
@@ -81,7 +81,7 @@
   function catColor(type, cat) {
     if (type === 'income') return '#5cc9a7';
     var i = CATS.expense.indexOf(cat);
-    return CAT_COLORS[i < 0 ? 9 : i];
+    return CAT_COLORS[i < 0 ? CAT_COLORS.length - 1 : i];
   }
 
   /* ---------- 資料 ---------- */
@@ -244,9 +244,47 @@
     var first = Math.round((total - per * (n - 1)) * dec) / dec;
     return { per: per, first: first === per ? 0 : first };
   }
-  function polAmt(p, k) { return k === 0 && p.firstAmt > 0 ? p.firstAmt : p.amount; }
+  function polAmt(p, k) {
+    if (p.sched && p.sched[k]) return p.sched[k].pay;
+    return k === 0 && p.firstAmt > 0 ? p.firstAmt : p.amount;
+  }
+  var LOAN_TYPES = { house: '房貸', car: '車貸', credit: '信用貸款', other: '其他貸款' };
+  // 貸款還款表。method: annuity＝本息平均攤還；principal＝本金平均攤還。grace：寬限期（只繳利息的月數）
+  function loanSchedule(principal, ratePct, n, method, grace, fixedPay, cur) {
+    var r = ratePct / 100 / 12, bal = principal, out = [], rc = function (x) { return roundCur(x, cur); };
+    var m = n - grace, pmt = 0;
+    for (var k = 0; k < n; k++) {
+      var intr = rc(bal * r), pay, prin;
+      if (k < grace) { prin = 0; pay = intr; }
+      else {
+        if (method === 'principal') prin = rc(principal / m);
+        else {
+          if (!pmt) pmt = fixedPay > 0 ? fixedPay : (r === 0 ? rc(bal / m) : rc(bal * r / (1 - Math.pow(1 + r, -m))));
+          prin = rc(pmt - intr);
+        }
+        if (k === n - 1 || prin > bal) prin = bal;
+        pay = rc(prin + intr);
+      }
+      bal = rc(bal - prin);
+      out.push({ pay: pay, int: intr, prin: prin, bal: bal });
+    }
+    return out;
+  }
+  // 以日期推算：到期日已過的期數視為已繳（舊貸款不必補記也能算出剩餘本金）
+  function loanState(p) {
+    var t = today0(), n = p.total, k = 0;
+    while (k < n && polDate(p, k) <= t) k++;
+    var rem = k === 0 ? p.principal : p.sched[k - 1].bal, nextPay = k < n ? p.sched[k].pay : 0, sumInt = 0;
+    for (var j = k; j < n; j++) sumInt += p.sched[j].int;
+    return { paid: k, left: n - k, remain: rem, nextPay: nextPay, interestLeft: sumInt, end: polDate(p, n - 1), done: k >= n };
+  }
+  function polNote(p, k) {
+    var s = p.name + ' ' + periodText(p, k);
+    if (p.kind === 'loan' && p.sched && p.sched[k]) s += '（本金 ' + p.sched[k].prin.toLocaleString('zh-TW') + '、利息 ' + p.sched[k].int.toLocaleString('zh-TW') + '）';
+    return s;
+  }
   function polSum(p, from) { var t = 0; for (var k = from; k < p.total; k++) t += polAmt(p, k); return t; }
-  function polCat(p) { return p.cat || (p.kind === 'inst' ? '分期' : '保險'); }
+  function polCat(p) { return p.cat || (p.kind === 'inst' ? '分期' : p.kind === 'loan' ? '貸款' : '保險'); }
   function polDate(p, k) {
     var f = String(p.first).split('-'), m = +f[1] - 1 + k * p.freq, y = +f[0];
     var last = new Date(y, m + 1, 0).getDate();
@@ -272,6 +310,7 @@
     return info;
   }
   function polLeft(p) { // 還沒記錄的剩餘期數與金額（只有有固定期數的才有意義）
+    if (p.kind === 'loan' && p.sched) { var ls = loanState(p); return { n: ls.left, sum: ls.remain }; }
     var rec = recordedMap(p), n = 0, sum = 0;
     for (var k = 0; k < p.total; k++) if (!rec[k]) { n++; sum += polAmt(p, k); }
     return { n: n, sum: sum };
@@ -292,7 +331,7 @@
         newSkip.push(k); R.autoSkipped++; top = k; continue;
       }
       var e = { id: 'e_auto_' + p.id + '_' + k, type: 'expense', cat: polCat(p), acct: p.acct, amount: polAmt(p, k), date: dsx,
-        note: p.name + ' ' + periodText(p, k), ts: Date.now() + n, pol: p.id, period: k, by: cfg.who || '', synced: false };
+        note: polNote(p, k), ts: Date.now() + n, pol: p.id, period: k, by: cfg.who || '', synced: false };
       if (p.insured) e.who = p.insured;
       D.entries.push(e); made++; n++; top = k;
     }
@@ -548,9 +587,9 @@
       }),
       policies: D.policies.map(function (p) {
         var info = polInfo(p), left = p.total > 0 ? polLeft(p) : null;
-        return { name: p.name, kind: p.kind === 'inst' ? '信用卡分期' : '保單／定期扣款', holder: p.holder || '', insured: p.insured || '', insurer: p.insurer || '',
+        return { name: p.name, kind: p.kind === 'inst' ? '信用卡分期' : p.kind === 'loan' ? '貸款（' + (LOAN_TYPES[p.loanType] || '貸款') + '）' : '保單／定期扣款', holder: p.holder || '', insured: p.insured || '', insurer: p.kind === 'loan' ? (p.lender || '') : (p.insurer || ''),
           acct: acctName(p.acct), freq: POL_FREQ[p.freq] || p.freq, amount: p.amount, firstAmt: p.firstAmt || '', first: p.first, total: p.total || '',
-          leftN: left ? left.n : '', leftSum: left ? left.sum : '', next: info.finished ? '已結束' : ymd(info.date), start: p.start || '', payYears: p.payYears || '', term: p.term || '' };
+          leftN: left ? left.n : '', leftSum: left ? left.sum : '', next: info.finished ? '已結束' : ymd(info.date), start: p.start || '', payYears: p.payYears || '', term: p.kind === 'loan' ? ('貸款 ' + p.principal + '，年利率 ' + p.rate + '%') : (p.term || '') };
       }),
       family: D.family.map(function (f) { return { name: f.name, rel: f.rel || '', birth: f.birth || '', note: f.note || '' }; }),
       rates: Object.keys(D.rates).map(function (c) { return { cur: c, rate: D.rates[c] }; })
@@ -589,13 +628,13 @@
   };
 
   /* 對外 */
-  R.C = { CATS: CATS, CURS: CURS, POL_FREQ: POL_FREQ, KIND_NAME: KIND_NAME, CAT_COLORS: CAT_COLORS };
+  R.C = { LOAN_TYPES: LOAN_TYPES, CATS: CATS, CURS: CURS, POL_FREQ: POL_FREQ, KIND_NAME: KIND_NAME, CAT_COLORS: CAT_COLORS };
   R.u = { $: $, h: h, pad: pad, ymd: ymd, today: today, today0: today0, mdt: mdt, fmt: fmt, sfmt: sfmt, roundCur: roundCur, parseAmount: parseAmount,
     newId: newId, load: load, store: store, toast: toast, catColor: catColor, field: field, chipRow: chipRow, curOptions: curOptions };
   R.f = { saveAll: saveAll, saveCfg: saveCfg, loadAll: loadAll, sortedAccounts: sortedAccounts, findAcct: findAcct, acctCur: acctCur, fullName: fullName,
     acctName: acctName, isExt: isExt, usesAcct: usesAcct, toAmt: toAmt, rateOf: rateOf, entryRate: entryRate, dispCur: dispCur, val: val,
     foreignCurs: foreignCurs, balances: balances, inFilter: inFilter, lacksRate: lacksRate, totals: totals, monthList: monthList, whoNames: whoNames,
     cardCycle: cardCycle, instSplit: instSplit, polAmt: polAmt, polSum: polSum, polCat: polCat, polDate: polDate, periodText: periodText,
-    polInfo: polInfo, polLeft: polLeft, autoRecordPolicies: autoRecordPolicies, ensurePeople: ensurePeople, entryForm: entryForm, lastAcct: lastAcct,
+    polInfo: polInfo, polLeft: polLeft, loanSchedule: loanSchedule, loanState: loanState, polNote: polNote, autoRecordPolicies: autoRecordPolicies, ensurePeople: ensurePeople, entryForm: entryForm, lastAcct: lastAcct,
     recordedMap: recordedMap };
 })();
