@@ -419,6 +419,8 @@
           f.autoRecordPolicies(); f.saveAll(); R.closeDlg(); R.render(); R.sync(true); toast('已儲存');
         })));
       if (p) {
+        if (!f.loanState(p).done) b.append(btn('從目前剩餘本金重新試算', '', function () { openResched(p); }, { style: 'width:100%;margin-top:12px' }));
+        if (p.resched) b.append(h('p', { class: 'hint' }, '這筆貸款在 ' + p.resched + ' 用剩餘本金重新試算過。若修改上面的條件並按「儲存」，會改依原始貸款重算整份還款表，並取消重新試算。'));
         var armed = false, delb = btn('刪除', 'danger', function () {
           if (!armed) { armed = true; delb.textContent = '再按一次確認刪除（已記錄的支出會保留）'; return; }
           D.policies = D.policies.filter(function (x) { return x.id !== p.id; });
@@ -426,6 +428,43 @@
         });
         b.append(delb);
       }
+    });
+  }
+
+  // 依銀行對帳單的「目前剩餘本金」，從現在起重算剩下的期數；已過的期數保留不動
+  function openResched(p) {
+    var ls = f.loanState(p), cur = f.acctCur(p.acct), method = p.method || 'annuity';
+    R.openDlg('重新試算：' + p.name, function (b) {
+      var remain = h('input', { type: 'number', step: 'any', inputmode: 'decimal', value: ls.remain, oninput: function () { update(); } });
+      var rate = h('input', { type: 'number', step: 'any', inputmode: 'decimal', value: p.rate, oninput: function () { update(); } });
+      var left = h('input', { type: 'number', inputmode: 'numeric', value: ls.left, oninput: function () { update(); } });
+      var fixedPay = h('input', { type: 'number', step: 'any', inputmode: 'decimal', value: '', placeholder: '選填，銀行給的每期金額', oninput: function () { update(); } });
+      var methBox = h('div', {}), prev = h('p', { class: 'hint' }), err = h('p', { class: 'err' });
+      function drawMeth() { methBox.innerHTML = ''; methBox.append(u.chipRow([{ v: 'annuity', t: '本息平均攤還' }, { v: 'principal', t: '本金平均攤還' }], method, function (v) { method = v; drawMeth(); update(); })); }
+      function calc() {
+        var r = parseFloat(remain.value), rt = parseFloat(rate.value), n = parseInt(left.value, 10);
+        if (!(r > 0) || !(rt >= 0) || !(n >= 1)) return null;
+        return f.loanSchedule(r, rt, n, method, 0, parseFloat(fixedPay.value) || 0, cur);
+      }
+      function update() {
+        var sc = calc();
+        prev.textContent = sc ? '新的還款表：' + (method === 'principal' ? '下一期 ' + fmt(sc[0].pay, cur) + '，逐期遞減' : '每期 ' + fmt(sc[0].pay, cur)) + '，剩餘利息約 ' + fmt(sc.reduce(function (t, x) { return t + x.int; }, 0), cur) + '。' : '';
+      }
+      drawMeth(); update();
+      b.append(h('p', { class: 'hint' }, '已繳 ' + ls.paid + ' 期。把銀行對帳單上「目前剩餘本金」填進來，從下一期起依這個金額重算；已經過去的期數和已記錄的支出不會變。'),
+        u.field('目前剩餘本金', remain, '依日期推算約為 ' + fmt(ls.remain, cur) + '。'), u.field('年利率（%）', rate), u.field('剩餘期數', left, '原本還剩 ' + ls.left + ' 期；提前還款縮短期限或展延時可以改。'),
+        h('label', {}, '還款方式'), methBox, u.field('每期固定金額（選填）', fixedPay), prev, err,
+        h('div', { class: 'btns' }, btn('取消', '', function () { openLoan(p); }), btn('套用', 'primary', function () {
+          var sc = calc(); if (!sc) { err.textContent = '請檢查剩餘本金、利率與剩餘期數。'; return; }
+          var r = u.roundCur(parseFloat(remain.value), cur), paid = ls.paid, n = parseInt(left.value, 10);
+          var prefix = p.sched.slice(0, paid).map(function (x) { return Object.assign({}, x); });
+          if (paid > 0) prefix[paid - 1].bal = r;
+          var np = Object.assign({}, p, { sched: prefix.concat(sc), total: paid + n, rate: parseFloat(rate.value), method: method, grace: 0, fixedPay: parseFloat(fixedPay.value) || 0,
+            amount: sc[0].pay, resched: u.today() });
+          if (paid === 0) np.principal = r;
+          D.policies = D.policies.map(function (x) { return x.id === np.id ? np : x; });
+          f.saveAll(); R.closeDlg(); R.render(); R.sync(true); toast('已重新試算');
+        })));
     });
   }
 
